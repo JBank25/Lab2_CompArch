@@ -31,9 +31,10 @@
 
 void process_instruction();
 
-enum instructions{ADD, AND, HALT, JMP, JSR, JSRR, LDB, LDW, LEA,            //enum type used for switch statement when decoding
-                NOP, NOT, RET, LSHF, RSHFL, RSHFA, RTI, STB, STW,           //opcodes 
-                TRAP, XOR, BRN, BRZ, BRP, BR, BRZP, BRNP, BRNZ, BRNZP} code;
+enum instructions{ADD = 0b0001, AND = 0b0101, JMPRET = 0b1100,
+                   JSR = 0b0100, LDB = 0b0010, LDW = 0b0110, LEA = 0b1110,            //enum type used for switch statement when decoding
+                   SHF = 0b1101, RTI = 0b1000, STB = 0b0011, STW = 0b0111,
+                  TRAP = 0b1111, XOR = 0b1001, BR = 0b0000} code;
 
 
 void addInstruction();
@@ -52,8 +53,8 @@ void haltInstruction();
 /***************************************************************/
 #define Low16bits(x) ((x) & 0xFFFF)
 #define test(x,y) x + y
-#define SetN(A) (A & 0x8000) > 1
-#define SetP(A) (A & 0x8000) != 1
+#define SetN(A) (A & 0x8000) == 0x8000
+#define SetP(A) (A & 0x8000) != 0x8000
 #define SetZ(A) (A == 0)
 
 /***************************************************************/
@@ -429,7 +430,8 @@ void process_instruction(){
    */     
   int currentInstruction = MEMORY[CURRENT_LATCHES.PC][0] | (MEMORY[CURRENT_LATCHES.PC][1] << 8);
   int opcode = ((MEMORY[CURRENT_LATCHES.PC][1]) & 0xF0) >> 4;//extracting opcode
-  switch(opcode.PC)
+ 
+  switch(opcode)
   {
       case ADD:
           addInstruction();
@@ -437,17 +439,11 @@ void process_instruction(){
       case AND:
           andInstruction();
           break;
-      case HALT:
-          haltInstruction();
-          break;
-      case JMP:
-          jmpInstruction();
+      case JMPRET:
+          retJmpInstruction();
           break;
       case JSR:
           jsrJsrrrInstruction();
-          break;
-      case JSRR:
-          jsrJsrrrInstruction();          
           break;
       case LDB:
           ldbInstruction();
@@ -458,22 +454,7 @@ void process_instruction(){
       case LEA:
           leaInstruction();
           break;
-      case NOP:
-          nopInstruction();
-          break;
-      case NOT:
-          notInstruction();
-          break;
-      case RET:
-          retInstruction();
-          break;
-      case LSHF:
-          shfInstruction();
-          break;
-      case RSHFL:
-          shfInstruction();
-          break;
-      case RSHFA:
+      case SHF:
           shfInstruction();
           break;
       case RTI:
@@ -489,30 +470,9 @@ void process_instruction(){
           trapInstruction();
           break;
       case XOR:
-          xorInstruction();
-          break;
-      case BRN:
-          brInstruction();
-          break;
-      case BRZ:
-          brInstruction();
-          break;
-      case BRP:
-          brInstruction();
+          xorNotInstruction();
           break;
       case BR:
-          brInstruction();
-          break;
-      case BRZP:
-          brInstruction();
-          break;
-      case BRNP:
-          brInstruction();
-          break;
-      case BRNZ:
-          brInstruction();
-          break;
-      case BRNZP:
           brInstruction();
           break;
   }
@@ -522,9 +482,50 @@ int getSrcReg(int upperMem, int lowerMem)
 {
   return (((upperMem)) &0x1 <<2) | ((lowerMem &0xC0) >> 6);
 }
+/**
+ * Get bits [3:1] from the upper memory address
+ * and shift them right 1x.
+ */
 int getDesReg(int upperMem)
 {
-  return (upperMem & 0xE) >> 1;
+  return ((upperMem & 0xE) >> 1);
+}
+int imm5Sext(int value)
+{
+  int maskBits = 0xFFFFFFE0;
+  if(value & 0x10 != 0x10)//bit 4 should be set to SEXT
+    return value;
+  return (value | maskBits);
+}
+int imm6Sext(int value)
+{
+  int maskBits = 0xFFFFFF30;
+  if(value & 0x20 != 0x20)//bit 4 should be set to SEXT
+    return value;
+  return (value | maskBits);
+}
+int imm9Sext(int value)
+{
+  int maskBits = 0xFFFFFE00;
+  if(value & 0x100 != 0x100)//bit 8 should be set to SEXT
+    return value;
+  return (value | maskBits);
+}
+imm16Sext(int value)
+{
+  int maskBits = 0xFFFF0000;
+  if(value & 0x8000 != 0x8000)
+    return;
+  return (value | maskBits);
+}
+void setNextRegs(int skip)
+{
+  for(int i = 0; i < 8; i++)
+  {
+    if(i == skip)
+      continue;
+    NEXT_LATCHES.REGS[i] = CURRENT_LATCHES.REGS[i];
+  }
 }
 void addInstruction()
 {
@@ -532,24 +533,27 @@ void addInstruction()
   int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], MEMORY[CURRENT_LATCHES.PC][0]);
   int desRegValue = CURRENT_LATCHES.REGS[desReg];
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
+  srcRegValue = imm16Sext(srcRegValue);
   int finalArg;
   int finalArgValue;
   int valueToStore;
-  if(MEMORY[CURRENT_LATCHES.PC][0] & 0x2)
+  if(MEMORY[CURRENT_LATCHES.PC][0] & 0x20 == 0x20)//bit5 set means imm5 value
   {
-    finalArg = MEMORY[CURRENT_LATCHES.PC][0] & 0x1F;
-    finalArgValue = finalArgValue;
+    finalArg = MEMORY[CURRENT_LATCHES.PC][0] & 0x1F;//raw bit values
+    finalArgValue = imm5Sext(finalArgValue);//will SEXT the 16 bit int as needed
   }
   else
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC][0] & 0x7;
     finalArgValue = CURRENT_LATCHES.REGS[finalArgValue];
+    finalArgValue = imm5Sext(finalArgValue);
   }
-  valueToStore = (Low16bits(srcRegValue) + Low16bits(finalArgValue));
+  valueToStore = Low16Bits(srcRegValue + finalArgValue);
   NEXT_LATCHES.N = SetN(valueToStore);
   NEXT_LATCHES.P = SetP(valueToStore);
   NEXT_LATCHES.Z = SetZ(valueToStore);
   NEXT_LATCHES.REGS[desReg] = Low16bits(valueToStore);
+  setNextRegs(desReg);
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC +=0x2;
   return;
 }
@@ -557,77 +561,83 @@ void andInstruction()
 {
   int desReg = getDesReg(MEMORY[CURRENT_LATCHES.PC][1]);
   int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], MEMORY[CURRENT_LATCHES.PC][0]);
-  int desRegValue = CURRENT_LATCHES.REGS[desReg];
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   int finalArg;
   int finalArgValue;
   int valueToStore;
-  if(MEMORY[CURRENT_LATCHES.PC][0] & 0x2)
+  if(MEMORY[CURRENT_LATCHES.PC][0] & 0x20 == 0x20)//imm5 mode
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC][0] & 0x1F;
-    finalArgValue = finalArgValue;
+    finalArgValue = imm5Sext(finalArg);
   }
-  else
+  else//reg mode
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC][0] & 0x7;
     finalArgValue = CURRENT_LATCHES.REGS[finalArgValue];
   }
-  valueToStore = (Low16bits(srcRegValue) & Low16bits(finalArgValue));
+  valueToStore = Low16Bits((Low16bits(srcRegValue) & Low16bits(finalArgValue)));
   NEXT_LATCHES.N = SetN(valueToStore);
   NEXT_LATCHES.P = SetP(valueToStore);
   NEXT_LATCHES.Z = SetZ(valueToStore);
   NEXT_LATCHES.REGS[desReg] = Low16bits(valueToStore);
+  setNextRegs(desReg);
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC +=0x2;
   return;
 }
-void xorInstruction()
+void xorNotInstruction()
 {
   int desReg = getDesReg(MEMORY[CURRENT_LATCHES.PC][1]);
   int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], MEMORY[CURRENT_LATCHES.PC][0]);
-  int desRegValue = CURRENT_LATCHES.REGS[desReg];
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   int finalArg;
   int finalArgValue;
   int valueToStore;
-  if(MEMORY[CURRENT_LATCHES.PC][0] & 0x2)
+  if(MEMORY[CURRENT_LATCHES.PC][0] & 0x20 == 0x20)//imm5 mode
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC][0] & 0x1F;
-    finalArgValue = finalArgValue;
+    finalArgValue = imm5Sext(finalArgValue);
   }
   else
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC][0] & 0x7;
     finalArgValue = CURRENT_LATCHES.REGS[finalArgValue];
   }
-  valueToStore = (Low16bits(srcRegValue) ^ Low16bits(finalArgValue));
+  valueToStore = Low16Bits((Low16bits(srcRegValue) ^ Low16bits(finalArgValue)));
   NEXT_LATCHES.N = SetN(valueToStore);
   NEXT_LATCHES.P = SetP(valueToStore);
   NEXT_LATCHES.Z = SetZ(valueToStore);
   NEXT_LATCHES.REGS[desReg] = Low16bits(valueToStore);
+  setNextRegs(desReg);
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC +=0x2;
   return;
 }
 
-void haltInstruction()
-{
-  NEXT_LATCHES.PC = 0; //I think this just needs to set PC to 0 so program will exit
-}
-
-void jmpInstruction()
+/**
+ * 1100 will take srcReg and store its value into PC
+ * RET just uses 7th reg only
+ */
+void retJmpInstruction()
 {
   int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], MEMORY[CURRENT_LATCHES.PC][0]);
   int srcRegValue = Low16bits(CURRENT_LATCHES.REGS[srcReg]);
   NEXT_LATCHES.PC = Low16bIts(srcRegValue);
+  setNextRegs(-1);//do not modify regs
+  NEXT_LATCHES.N = CURRENT_LATCHES.N;
+  NEXT_LATCHES.P = CURRENT_LATCHES.P;
+  NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
 }
 void jsrJsrrrInstruction()
 {
   int upperMemory = Low16Bits(MEMORY[CURRENT_LATCHES.PC][1]);
   int lowerMemory = Low16Bits(MEMORY[CURRENT_LATCHES.PC][0]);
-  if(upperMemory & 0x08)  //jsr
+  int temp = CURRENT_LATCHES.PC +=0x2;
+  if(upperMemory & 0x08 == 0x08)  //jsr
   {
     int pcOffset11 = ((upperMemory & 0x7) << 8) | lowerMemory;
+    //sext as needed
+    pcOffset11 = (pcOffset11 & 0x400) == 0x4000 ? pcOffset11|= 0xF800 : pcOffset11;
     pcOffset11 = pcOffset11 << 1;
-    NEXT_LATCHES.PC = Low16bits(pcOffset11);
+    NEXT_LATCHES.PC = Low16bits(pcOffset11) + Low16Bits(temp);
   }
   else//jsrr
   {
@@ -635,6 +645,10 @@ void jsrJsrrrInstruction()
     int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
     NEXT_LATCHES.PC = Low16bits(srcRegValue);
   }
+  setNextRegs(-1);
+  NEXT_LATCHES.N = CURRENT_LATCHES.N;
+  NEXT_LATCHES.P = CURRENT_LATCHES.P;
+  NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
   return;
 }
 
@@ -645,12 +659,15 @@ void ldbInstruction()
   int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], MEMORY[CURRENT_LATCHES.PC][0]);
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   int bOffset6 = MEMORY[CURRENT_LATCHES.PC][0] & 0x3F;
+  bOffset6 = imm6Sext(bOffset6);
+  srcRegValue = imm16Sext(srcRegValue);
   int finalValue = Low16bits(bOffset6 + srcRegValue);
 
   NEXT_LATCHES.N = SetN(finalValue);
   NEXT_LATCHES.P = SetP(finalValue);
   NEXT_LATCHES.Z = SetZ(finalValue);
   NEXT_LATCHES.REGS[desReg] = Low16bits(finalValue);
+  setNextRegs(desReg);
   return;
 }
 
@@ -661,11 +678,15 @@ void ldwInstruction()
   int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], MEMORY[CURRENT_LATCHES.PC][0]);
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   int bOffset6 = MEMORY[CURRENT_LATCHES.PC][0] & 0x3F;
+  bOffset6 = imm6Sext(bOffset6);
+  bOffset6 = bOffset6 << 1;
+  srcRegValue = imm16Sext(srcRegValue);
   int finalValue = Low16bits(bOffset6 + srcRegValue);
 
   NEXT_LATCHES.N = SetN(finalValue);
   NEXT_LATCHES.P = SetP(finalValue);
   NEXT_LATCHES.Z = SetZ(finalValue);
+  setNextRegs(desReg);
   NEXT_LATCHES.REGS[desReg] = Low16bits(finalValue);
   return;
 }
@@ -675,35 +696,14 @@ void leaInstruction()
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC +0x2;//increment PC
   int desReg = getDesReg(MEMORY[CURRENT_LATCHES.PC][1]);//get reg 
   int pcOffsetP = MEMORY[CURRENT_LATCHES.PC][0] | ((MEMORY[CURRENT_LATCHES.PC][1] & 0x1) << 8);
+  pcOffsetP = imm9Sext(pcOffsetP);
   pcOffsetP << 1;//get pcOffset and left shift one
-  NEXT_LATCHES.REGS[desReg] = Low16bits(pcOffsetP);//store in desReg of NextLatches
+  NEXT_LATCHES.REGS[desReg] =Low16Bits(NEXT_LATCHES.PC+ Low16bits(pcOffsetP));//store in desReg of NextLatches
+  NEXT_LATCHES.N = CURRENT_LATCHES.N;
+  NEXT_LATCHES.P = CURRENT_LATCHES.P;
+  NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
+  setNextRegs(desReg);
   return;//does NOT setcc's
-}
-
-void nopInstruction()
-{
-  NEXT_LATCHES.PC = CURRENT_LATCHES.PC +0x2;
-  return;
-}
-
-void notInstruction()
-{
-  NEXT_LATCHES.PC = CURRENT_LATCHES.PC+0x2;
-  int desReg = getDesReg(MEMORY[CURRENT_LATCHES.PC][1]);
-  int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], MEMORY[CURRENT_LATCHES.PC][0]);
-  int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
-  srcRegValue = ~srcRegValue;
-  srcRegValue = Low16bits(srcRegValue);
-  NEXT_LATCHES.REGS[desReg] = Low16bits(srcRegValue);
-  NEXT_LATCHES.N = SetP(srcRegValue);
-  NEXT_LATCHES.P = SetN(srcRegValue);
-  NEXT_LATCHES.Z = SetZ(srcRegValue);
-  return;
-}
-
-void retInstruction()
-{
-  NEXT_LATCHES.PC = CURRENT_LATCHES.REGS[7];
 }
 
 void shfInstruction()
@@ -713,10 +713,10 @@ void shfInstruction()
   int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], MEMORY[CURRENT_LATCHES.PC][0]);
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   int lowerMemory = MEMORY[CURRENT_LATCHES.PC][0];
-  int shfAmount = MEMORY[CURRENT_LATCHES.PC][0] & 0x04;
+  int shfAmount = MEMORY[CURRENT_LATCHES.PC][0] & 0x0F;
   if(lowerMemory & 0x10 == 0x10)//lshf
   {
-    srcRegValue = Low16Bits(srcRegValue << shfAmount);
+    srcRegValue = Low16Bits((srcRegValue << shfAmount));
     NEXT_LATCHES.REGS[desReg] = srcRegValue;
   }
   else
@@ -725,17 +725,20 @@ void shfInstruction()
     {
       srcRegValue = Low16Bits(srcRegValue);//clears upper bits thus 0's will be shifted by >>
       srcRegValue >> shfAmount;
+      NEXT_LATCHES.REGS[desReg] = srcRegValue;
     }
     else
     {
+      srcRegValue = (srcRegValue&0x8000 == 0x8000) ? (srcRegValue | 0xFFFF0000) : srcRegValue; 
       srcRegValue >> shfAmount;         
       srcRegValue = Low16Bits(srcRegValue);
+      NEXT_LATCHES.REGS[desReg] = srcRegValue;
     }
   }
   NEXT_LATCHES.N = SetN(srcRegValue);//set cc's
   NEXT_LATCHES.P = SetP(srcRegValue);
   NEXT_LATCHES.Z = SetZ(srcRegValue);
-  NEXT_LATCHES.REGS[desReg] = srcRegValue;//change reg value
+  setNextRegs(desReg);
 }
 
 void rtiInstruction()
@@ -750,12 +753,42 @@ void stbInstruction()
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC+0x2;
   int lowerMemory = MEMORY[CURRENT_LATCHES.PC][0];
   int offset6 = lowerMemory & 0x3F;
-
+  offset6 = imm6Sext(offset6);
   int srcReg = getDesReg(MEMORY[CURRENT_LATCHES.PC][1]);
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
+  int baseReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], lowerMemory);
+  int baseRegValue = CURRENT_LATCHES.REGS[baseReg];
+  baseRegValue = imm16Sext(baseRegValue);
+  int finalMemLoc = Low16Bits(baseRegValue + offset6);
+  int upperLower = finalMemLoc %2 == 0 ? 0 : 1;//check if upper or lower mem loc
+  MEMORY[finalMemLoc][upperLower] = (0xFF &(srcRegValue));
+  setNextRegs(-1);
+  NEXT_LATCHES.N = CURRENT_LATCHES.N;
+  NEXT_LATCHES.P = CURRENT_LATCHES.P;
+  NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
 
 }
+void stwInstruction()
+{
+  NEXT_LATCHES.PC = CURRENT_LATCHES.PC+0x2;
+  int lowerMemory = MEMORY[CURRENT_LATCHES.PC][0];
+  int offset6 = lowerMemory & 0x3F;
+  offset6 = imm6Sext(offset6);
+  offset6 = offset6 << 1;
+  int srcReg = getDesReg(MEMORY[CURRENT_LATCHES.PC][1]);
+  int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
+  int baseReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC][1], lowerMemory);
+  int baseRegValue = CURRENT_LATCHES.REGS[baseReg];
+  baseRegValue = imm16Sext(baseRegValue);
+  int finalMemLoc = Low16Bits(baseRegValue + offset6);
+  MEMORY[finalMemLoc][0] = (0x00FF & (srcRegValue));
+  MEMORY[finalMemLoc][1] = (0xFF00 & (srcRegValue));
+  setNextRegs(-1);
+  NEXT_LATCHES.N = CURRENT_LATCHES.N;
+  NEXT_LATCHES.P = CURRENT_LATCHES.P;
+  NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
 
+}
 void brInstruction()
 {
   int currentN = CURRENT_LATCHES.N;
@@ -766,9 +799,28 @@ void brInstruction()
   int inputP = (MEMORY[CURRENT_LATCHES.PC][1] & 0x02) >> 1;
   int unconditionalBranch = !(inputN || inputZ || inputP);
   int pcOffset9 = MEMORY[CURRENT_LATCHES.PC][0] | (MEMORY[CURRENT_LATCHES.PC][1]) & 0x01 << 8;
+  pcOffset9 = imm9Sext(pcOffset9);
+  pcOffset9 = pcOffset9 << 1;
   if((currentN && inputN) || (currentP && inputP) || (currentZ && inputZ) || unconditionalBranch)
   {
-    NEXT_LATCHES.PC = pcOffset9 << 1;
+    NEXT_LATCHES.PC = pcOffset9 + CURRENT_LATCHES + 0x2;
   }
+  NEXT_LATCHES.N = CURRENT_LATCHES.N;
+  NEXT_LATCHES.P = CURRENT_LATCHES.P;
+  NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
+  setNextRegs(-1);
+  return;
+}
+
+void trapInstruction()
+{
+  NEXT_LATCHES.REGS[7] = CURRENT_LATCHES.PC+0x2;
+  int trapVector = MEMORY[CURRENT_LATCHES.PC][0];
+  trapVector = Low16Bits(trapVector);
+  NEXT_LATCHES.PC = Low16Bits((trapVector << 1));
+  NEXT_LATCHES.N = CURRENT_LATCHES.N;
+  NEXT_LATCHES.P = CURRENT_LATCHES.P;
+  NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
+  setNextRegs(-1);
   return;
 }
