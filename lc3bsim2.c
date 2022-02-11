@@ -1,8 +1,8 @@
 /*
     Name 1: Joshua Urbank
-    Name 2: Full name of the second partner
+    Name 2: Patrick Brown
     UTEID 1: jbu234
-    UTEID 2: UT EID of the second partner
+    UTEID 2: pbb468
 */
 
 /***************************************************************/
