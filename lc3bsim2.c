@@ -300,7 +300,9 @@ void load_program(char *program_filename) {
   int ii, word, program_base;
 
   /* Open program file. */
+
   prog = fopen(program_filename, "r");
+  //prog = fopen("input.txt", "r");
   if (prog == NULL) {
     printf("Error: Can't open program file %s\n", program_filename);
     exit(-1);
@@ -579,7 +581,7 @@ void addInstruction()
 void andInstruction()
 {
   int desReg = getDesReg(MEMORY[CURRENT_LATCHES.PC>>1][1]);
-  int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC>>1][1], MEMORY[CURRENT_LATCHES.PC][0]);
+  int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC>>1][1], MEMORY[CURRENT_LATCHES.PC>>1][0]);
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   int finalArg;
   int finalArgValue;
@@ -681,7 +683,7 @@ void ldbInstruction()
   srcRegValue = imm16Sext(srcRegValue);
   int finalValue = Low16bits((bOffset6 + srcRegValue));
   int upperLower = finalValue%2;
-  finalValue = MEMORY[finalValue][upperLower];
+  finalValue = MEMORY[finalValue>>1][upperLower];
   finalValue = ((finalValue&0x80) == 0x80) ? (finalValue| 0xFF): finalValue;
   NEXT_LATCHES.N = SetN(finalValue);
   NEXT_LATCHES.P = SetP(finalValue);
@@ -695,17 +697,23 @@ void ldwInstruction()
 {
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC +0x2;
   int desReg = getDesReg(MEMORY[CURRENT_LATCHES.PC>>1][1]);
-  int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC>>1][1], MEMORY[CURRENT_LATCHES.PC][0]);
+  int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC>>1][1], MEMORY[CURRENT_LATCHES.PC>>1][0]);
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   srcRegValue = imm16Sext(srcRegValue);
+
   int bOffset6 = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x3F;
   bOffset6 = imm6Sext(bOffset6);
   bOffset6 = bOffset6 << 1;
+
+  printf("des Reg: %d Src Reg: %d srcRegValue: %d bOffset6: %d\n", desReg, srcReg, srcRegValue, bOffset6);
+
   int finalValue = Low16bits((bOffset6 + srcRegValue));
-  int upperWord = Low16bits(MEMORY[finalValue][1]);
+  int upperWord = MEMORY[finalValue>>1][1]&0xFF;
   upperWord = upperWord << 8;
-  int lowerWord = MEMORY[finalValue][0];
+  int lowerWord = MEMORY[finalValue>>1][0]&0xFF;
   int wordToStore = upperWord | lowerWord;
+
+  printf("finalValue: %d lowerWord: %d upperWord: %d wordToStore: %d\n", finalValue, lowerWord, upperWord, wordToStore);
 
   setNextRegs(desReg);
   NEXT_LATCHES.N = SetN(wordToStore);
@@ -734,7 +742,7 @@ void shfInstruction()
 {
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC +0x2;//increment PC
   int desReg = getDesReg(MEMORY[CURRENT_LATCHES.PC>>1][1]);
-  int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC>>1][1], MEMORY[CURRENT_LATCHES.PC][0]);
+  int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC>>1][1], MEMORY[CURRENT_LATCHES.PC>>1][0]);
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   int lowerMemory = MEMORY[CURRENT_LATCHES.PC>>1][0];
   int shfAmount = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x0F;
@@ -783,7 +791,7 @@ void stbInstruction()
   baseRegValue = imm16Sext(baseRegValue);
   int finalMemLoc = Low16bits((baseRegValue + offset6));
   int upperLower = (finalMemLoc %2 == 0);//check if upper or lower mem loc
-  MEMORY[finalMemLoc][upperLower] = (0xFF &srcRegValue);
+  MEMORY[finalMemLoc>>1][upperLower] = (0xFF &srcRegValue);
   setNextRegs(-1);
   NEXT_LATCHES.N = CURRENT_LATCHES.N;
   NEXT_LATCHES.P = CURRENT_LATCHES.P;
@@ -804,8 +812,8 @@ void stwInstruction()
   int baseRegValue = CURRENT_LATCHES.REGS[baseReg];
   baseRegValue = imm16Sext(baseRegValue);
   int finalMemLoc = Low16bits((baseRegValue + offset6));
-  MEMORY[finalMemLoc][0] = (0x00FF & (srcRegValue));
-  MEMORY[finalMemLoc][1] = ((0xFF00 & (srcRegValue) >> 8));
+  MEMORY[finalMemLoc>>1][0] = (0x00FF & (srcRegValue));
+  MEMORY[finalMemLoc>>1][1] = ((0xFF00 & (srcRegValue) >> 8));
   setNextRegs(-1);
   NEXT_LATCHES.N = CURRENT_LATCHES.N;
   NEXT_LATCHES.P = CURRENT_LATCHES.P;
@@ -844,7 +852,7 @@ void trapInstruction()
   int trapVector = MEMORY[CURRENT_LATCHES.PC>>1][0];
   trapVector = Low16bits(trapVector);
   trapVector = Low16bits((trapVector << 1));
-  NEXT_LATCHES.PC = MEMORY[trapVector][0];
+  NEXT_LATCHES.PC = MEMORY[trapVector>>1][0];
   NEXT_LATCHES.N = CURRENT_LATCHES.N;
   NEXT_LATCHES.P = CURRENT_LATCHES.P;
   NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
