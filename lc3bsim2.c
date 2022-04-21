@@ -405,7 +405,7 @@ int main(int argc, char *argv[]) {
 
 /***************************************************************/
 #define SetN(A) ((A & 0x8000) == 0x8000)
-#define SetP(A) ((A & 0x8000) != 0x8000)
+#define SetP(A) ((A & 0x8000) != 0x8000 && (A != 0))
 #define SetZ(A) (A == 0)
 enum instructions{ADD = 0b0001, AND = 0b0101, JMPRET = 0b1100,
                    JSR = 0b0100, LDB = 0b0010, LDW = 0b0110, LEA = 0b1110,            //enum type used for switch statement when decoding
@@ -545,7 +545,8 @@ void setNextRegs(int skip)
   {
     if(i == skip)
       continue;
-    NEXT_LATCHES.REGS[i] = CURRENT_LATCHES.REGS[i];
+    else
+      NEXT_LATCHES.REGS[i] = CURRENT_LATCHES.REGS[i];
   }
 }
 void addInstruction()
@@ -573,6 +574,7 @@ void addInstruction()
   NEXT_LATCHES.N = SetN(valueToStore);
   NEXT_LATCHES.P = SetP(valueToStore);
   NEXT_LATCHES.Z = SetZ(valueToStore);
+  printf("N:%d Z:%d P:%d\n", NEXT_LATCHES.N, NEXT_LATCHES.Z, NEXT_LATCHES.P);
   NEXT_LATCHES.REGS[desReg] = Low16bits(valueToStore);
   setNextRegs(desReg);
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC +=0x2;
@@ -597,10 +599,12 @@ void andInstruction()
     finalArgValue = CURRENT_LATCHES.REGS[finalArgValue];
   }
   valueToStore = Low16bits((Low16bits(srcRegValue) & Low16bits(finalArgValue)));
+  printf("des Reg: %d Src Reg: %d srcRegValue: %d finalArg: %d Value Stored: %d\n", desReg, srcReg, srcRegValue, finalArgValue, valueToStore);
   NEXT_LATCHES.N = SetN(valueToStore);
   NEXT_LATCHES.P = SetP(valueToStore);
   NEXT_LATCHES.Z = SetZ(valueToStore);
   NEXT_LATCHES.REGS[desReg] = Low16bits(valueToStore);
+  printf("N:%d Z:%d P:%d\n", NEXT_LATCHES.N, NEXT_LATCHES.Z, NEXT_LATCHES.P);
   setNextRegs(desReg);
   NEXT_LATCHES.PC = CURRENT_LATCHES.PC +=0x2;
   return;
