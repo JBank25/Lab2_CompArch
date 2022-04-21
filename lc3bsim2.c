@@ -566,6 +566,7 @@ void addInstruction()
   else
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x7;
+    printf("Src Reg 2: %x\n", finalArg);
     finalArgValue = CURRENT_LATCHES.REGS[finalArg];
     finalArgValue = imm16Sext(finalArgValue);
   }
@@ -596,7 +597,9 @@ void andInstruction()
   else//reg mode
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x7;
-    finalArgValue = CURRENT_LATCHES.REGS[finalArgValue];
+    printf("Src Reg2: %d\n", finalArg);
+    finalArgValue = CURRENT_LATCHES.REGS[finalArg];
+    printf("Src Reg2 Value: %d\n", finalArgValue);
   }
   valueToStore = Low16bits((Low16bits(srcRegValue) & Low16bits(finalArgValue)));
   printf("des Reg: %d Src Reg: %d srcRegValue: %d finalArg: %d Value Stored: %d\n", desReg, srcReg, srcRegValue, finalArgValue, valueToStore);
