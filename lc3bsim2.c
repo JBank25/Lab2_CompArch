@@ -661,16 +661,23 @@ void jsrJsrrrInstruction()
   int temp = CURRENT_LATCHES.PC + 0x2;
   if((upperMemory & 0x08) == 0x08)  //jsr
   {
+    printf("JSR instruciton\n");
     int pcOffset11 = ((upperMemory & 0x7) << 8) | lowerMemory;
+    printf("Initial offset: %x %d\n", pcOffset11, pcOffset11);
     //sext as needed
     pcOffset11 = ((pcOffset11 & 0x400) == 0x4000) ? (pcOffset11| 0xF800) : pcOffset11;
+    printf("Offset Extended: %x %d\n",pcOffset11,pcOffset11);
     pcOffset11 = pcOffset11 << 1;
+    printf("Offset Shifted: %x %d\n",pcOffset11,pcOffset11);
     NEXT_LATCHES.PC = Low16bits(pcOffset11) + Low16bits(temp);
   }
   else//jsrr
   {
+    printf("JSRR instruciton\n");
     int srcReg = getSrcReg(upperMemory, lowerMemory);
+    printf("Src Reg: %d\n", srcReg);
     int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
+    printf("SrcRegValue: %d\n", srcRegValue);
     NEXT_LATCHES.PC = Low16bits(srcRegValue);
   }
   setNextRegs(-1);
@@ -685,13 +692,16 @@ void ldbInstruction()
   int desReg = getDesReg(MEMORY[CURRENT_LATCHES.PC>>1][1]);
   int srcReg = getSrcReg(MEMORY[CURRENT_LATCHES.PC>>1][1], MEMORY[CURRENT_LATCHES.PC>>1][0]);
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
+  //printf("DesReg: %d Src Reg: %d Src Reg Value: %d\n", desReg, srcReg, srcRegValue);
   int bOffset6 = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x3F;
+  //printf("Initial offset: %x\n", bOffset6);
   bOffset6 = imm6Sext(bOffset6);
+  //printf("SEXT offset: %x\n", bOffset6);
   srcRegValue = imm16Sext(srcRegValue);
   int finalValue = Low16bits((bOffset6 + srcRegValue));
   int upperLower = finalValue%2;
   finalValue = MEMORY[finalValue>>1][upperLower];
-  finalValue = ((finalValue&0x80) == 0x80) ? (finalValue| 0xFF): finalValue;
+  finalValue = ((finalValue&0x80) == 0x80) ? (finalValue| 0xFF00): finalValue;
   NEXT_LATCHES.N = SetN(finalValue);
   NEXT_LATCHES.P = SetP(finalValue);
   NEXT_LATCHES.Z = SetZ(finalValue);
@@ -753,24 +763,32 @@ void shfInstruction()
   int srcRegValue = CURRENT_LATCHES.REGS[srcReg];
   int lowerMemory = MEMORY[CURRENT_LATCHES.PC>>1][0];
   int shfAmount = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x0F;
-  if((lowerMemory & 0x10) == 0x10)//lshf
+  printf("Des Reg: %d Src Reg: %d Src Reg Value: %d/%x Shift amount: %d\n", desReg, srcReg, srcRegValue, srcRegValue, shfAmount);
+  if((lowerMemory & 0x30) == 0x00)//lshf
   {
+    printf("Left shift\n");
     srcRegValue = Low16bits((srcRegValue << shfAmount));
+    printf("SrcRegValue after: %x\n");
     NEXT_LATCHES.REGS[desReg] = srcRegValue;
   }
   else
   {
-    if((lowerMemory& 0x20) == 0x20)//rshf 0's shifted into vacant positions
+    if((lowerMemory& 0x30) == 0x10)//rshf 0's shifted into vacant positions
     {
+      printf("Right shift\n");
       srcRegValue = Low16bits(srcRegValue);//clears upper bits thus 0's will be shifted by >>
       srcRegValue = srcRegValue >> shfAmount;
+      printf("SrcRegValue after: %x\n");
       NEXT_LATCHES.REGS[desReg] = srcRegValue;
     }
     else
     {
+      printf("Right arithmetic shift\n");
       srcRegValue = ((srcRegValue&0x8000) == 0x8000) ? (srcRegValue | 0xFFFF0000) : srcRegValue; 
+      printf("SrcRegValue after SEXT: %x\n", srcRegValue);
       srcRegValue = srcRegValue >> shfAmount;         
       srcRegValue = Low16bits(srcRegValue);
+      printf("SrcRegValue after shift: %x\n", srcRegValue);
       NEXT_LATCHES.REGS[desReg] = srcRegValue;
     }
   }
