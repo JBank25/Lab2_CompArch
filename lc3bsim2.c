@@ -597,9 +597,7 @@ void andInstruction()
   else//reg mode
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x7;
-    printf("Src Reg2: %d\n", finalArg);
     finalArgValue = CURRENT_LATCHES.REGS[finalArg];
-    printf("Src Reg2 Value: %d\n", finalArgValue);
   }
   valueToStore = Low16bits((Low16bits(srcRegValue) & Low16bits(finalArgValue)));
   printf("des Reg: %d Src Reg: %d srcRegValue: %d finalArg: %d Value Stored: %d\n", desReg, srcReg, srcRegValue, finalArgValue, valueToStore);
@@ -623,14 +621,16 @@ void xorNotInstruction()
   if((MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x20) == 0x20)//imm5 mode
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x1F;
-    finalArgValue = imm5Sext(finalArgValue);
+    finalArgValue = imm5Sext(finalArg);
   }
   else
   {
     finalArg = MEMORY[CURRENT_LATCHES.PC>>1][0] & 0x7;
-    finalArgValue = CURRENT_LATCHES.REGS[finalArgValue];
+    finalArgValue = CURRENT_LATCHES.REGS[finalArg];
+    printf("Second Reg: %d Second Reg Value: %d\n", finalArg, finalArgValue);
   }
   valueToStore = Low16bits((Low16bits(srcRegValue) ^ Low16bits(finalArgValue)));
+  printf("des Reg: %d Src Reg: %d srcRegValue: %d finalArg: %d Value Stored: %d\n", desReg, srcReg, srcRegValue, finalArgValue, valueToStore);
   NEXT_LATCHES.N = SetN(valueToStore);
   NEXT_LATCHES.P = SetP(valueToStore);
   NEXT_LATCHES.Z = SetZ(valueToStore);
